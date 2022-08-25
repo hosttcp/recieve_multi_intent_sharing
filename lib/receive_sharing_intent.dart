@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
+
 import 'package:flutter/services.dart';
 
 class ReceiveSharingIntent {
   static const MethodChannel _mChannel =
-  const MethodChannel('receive_sharing_intent/messages');
+  MethodChannel('receive_sharing_intent/messages');
   static const EventChannel _eChannelMedia =
-  const EventChannel("receive_sharing_intent/events-media");
+  EventChannel("receive_sharing_intent/events-media");
   static const EventChannel _eChannelLink =
-  const EventChannel("receive_sharing_intent/events-text");
+  EventChannel("receive_sharing_intent/events-text");
 
   static Stream<List<SharedMediaFile>>? _streamMedia;
   static Stream<String>? _streamLink;
@@ -21,13 +22,16 @@ class ReceiveSharingIntent {
   ///
   /// NOTE. The returned media on iOS (iOS ONLY) is already copied to a temp folder.
   /// So, you need to delete the file after you finish using it
-  static Future<List<SharedMediaFile>> getInitialMedia(String? identifer) async {
+  static Future<List<SharedMediaFile>> getInitialMedia(
+      String? identifier) async {
     var json = null;
     if (Platform.isAndroid) {
-      json = await _mChannel.invokeMethod('getInitialMedia',{"identifier":identifer});
+      json = await _mChannel
+          .invokeMethod('getInitialMedia', {"identifier": identifier});
+    } else {
+      json = await _mChannel.invokeMethod('getInitialMedia');
     }
-    else json = await _mChannel.invokeMethod('getInitialMedia');
-    
+
     if (json == null) return [];
     final encoded = jsonDecode(json);
     return encoded
@@ -39,8 +43,16 @@ class ReceiveSharingIntent {
   ///
   ///   * the initially stored link (possibly null), on successful invocation;
   ///   * a [PlatformException], if the invocation failed in the platform plugin.
-  static Future<String?> getInitialText() async {
-    return await _mChannel.invokeMethod('getInitialText');
+  static Future<String?> getInitialText({String? identifier}) async {
+    String? result;
+    if (Platform.isAndroid) {
+      result = await _mChannel
+          .invokeMethod('getInitialText', {"identifier": identifier});
+    } else {
+      result = await _mChannel.invokeMethod('getInitialText');
+    }
+
+    return result;
   }
 
   /// A convenience method that returns the initially stored link
@@ -48,8 +60,8 @@ class ReceiveSharingIntent {
   ///
   /// If the link is not valid as a URI or URI reference,
   /// a [FormatException] is thrown.
-  static Future<Uri?> getInitialTextAsUri() async {
-    final data = await getInitialText();
+  static Future<Uri?> getInitialTextAsUri({String? identifier}) async {
+    final data = await getInitialText(identifier: identifier);
     if (data == null) return null;
     return Uri.parse(data);
   }
@@ -73,12 +85,14 @@ class ReceiveSharingIntent {
   static Stream<List<SharedMediaFile>> getMediaStream(String? identifier) {
     if (_streamMedia == null) {
       var stream = null;
-      if(Platform.isAndroid){
-        stream = _eChannelMedia.receiveBroadcastStream(identifier).cast<String?>();
+      if (Platform.isAndroid) {
+        stream =
+            _eChannelMedia.receiveBroadcastStream(identifier).cast<String?>();
+      } else {
+        stream = _eChannelMedia.receiveBroadcastStream().cast<String?>();
       }
-      else stream = _eChannelMedia.receiveBroadcastStream().cast<String?>();
       _streamMedia = stream.transform<List<SharedMediaFile>>(
-        new StreamTransformer<String?, List<SharedMediaFile>>.fromHandlers(
+        StreamTransformer<String?, List<SharedMediaFile>>.fromHandlers(
           handleData: (String? data, EventSink<List<SharedMediaFile>> sink) {
             if (data == null) {
               sink.add([]);
@@ -113,9 +127,7 @@ class ReceiveSharingIntent {
   /// If the app was started by a link intent or user activity the stream will
   /// not emit that initial one - query either the `getInitialText` instead.
   static Stream<String> getTextStream() {
-    if (_streamLink == null) {
-      _streamLink = _eChannelLink.receiveBroadcastStream("text").cast<String>();
-    }
+    _streamLink ??= _eChannelLink.receiveBroadcastStream("text").cast<String>();
     return _streamLink!;
   }
 
@@ -130,7 +142,7 @@ class ReceiveSharingIntent {
   /// not emit that initial uri - query either the `getInitialTextAsUri` instead.
   static Stream<Uri> getTextStreamAsUri() {
     return getTextStream().transform<Uri>(
-      new StreamTransformer<String, Uri>.fromHandlers(
+      StreamTransformer<String, Uri>.fromHandlers(
         handleData: (String data, EventSink<Uri> sink) {
           sink.add(Uri.parse(data));
         },
@@ -168,4 +180,4 @@ class SharedMediaFile {
         type = SharedMediaType.values[json['type']];
 }
 
-enum SharedMediaType { IMAGE, VIDEO, FILE }
+enum SharedMediaType { image, video, file }
